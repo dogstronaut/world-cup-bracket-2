@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSyncLog, getLastSync, getResults, saveResults, resetResults, deleteAllBrackets, getAllBrackets, deleteBracket, updateBracketName, saveRecap, getAllRecaps, deleteRecap } from '@/lib/storage';
+import { getSyncLog, getLastSync, getResults, saveResults, resetResults, deleteAllBrackets, getAllBrackets, getBracket, deleteBracket, updateBracketName, saveBracket, saveRecap, getAllRecaps, deleteRecap } from '@/lib/storage';
 import { syncResults } from '@/lib/sync';
 import { generateAndPostRecap } from '@/lib/recapGen';
 
@@ -10,6 +10,17 @@ function checkAuth(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   if (!checkAuth(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { searchParams } = new URL(request.url);
+  const bracketId = searchParams.get('bracketId');
+  if (bracketId) {
+    try {
+      const bracket = await getBracket(bracketId);
+      if (!bracket) return NextResponse.json({ error: 'Bracket not found' }, { status: 404 });
+      return NextResponse.json({ bracket });
+    } catch {
+      return NextResponse.json({ error: 'Failed to fetch bracket' }, { status: 500 });
+    }
+  }
   try {
     const [syncLog, lastSync, results, brackets, recaps] = await Promise.all([getSyncLog(), getLastSync(), getResults(), getAllBrackets(), getAllRecaps()]);
     return NextResponse.json({ syncLog, lastSync, results, brackets, recaps });
@@ -39,6 +50,15 @@ export async function POST(request: NextRequest) {
       if (!id || !name?.trim()) return NextResponse.json({ error: 'Missing id or name' }, { status: 400 });
       await updateBracketName(id, name.trim());
       return NextResponse.json({ success: true, message: `Renamed to "${name.trim()}"` });
+    }
+
+    if (action === 'update_picks') {
+      const { id, picks } = body;
+      if (!id || !picks) return NextResponse.json({ error: 'Missing id or picks' }, { status: 400 });
+      const bracket = await getBracket(id);
+      if (!bracket) return NextResponse.json({ error: 'Bracket not found' }, { status: 404 });
+      await saveBracket({ ...bracket, picks });
+      return NextResponse.json({ success: true, message: 'Picks updated' });
     }
 
     if (action === 'delete_bracket') {
