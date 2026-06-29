@@ -70,13 +70,9 @@ export default async function HomePage() {
           ))}
         </div>
 
-        <Link
-          href="/bracket/new"
-          className="inline-flex items-center gap-2 bg-[#FFD700] text-[#050d1a] font-black text-lg px-8 py-3 rounded-xl hover:bg-[#FFE57F] transition-colors shadow-lg shadow-[#FFD700]/20"
-        >
-          ⚽ Submit Your Bracket
-        </Link>
-        <p className="text-[#8899aa] text-xs">No login required • Anyone can enter • Free to play</p>
+        <p className="text-[#8899aa] text-sm bg-[#0f2040] border border-[#1a3a60] rounded-xl px-6 py-3">
+          🔒 Submissions are closed
+        </p>
       </section>
 
       {/* Scoring guide */}
@@ -118,13 +114,6 @@ export default async function HomePage() {
           <div className="bg-[#0f2040] border border-[#1a3a60] rounded-xl p-12 text-center space-y-4">
             <p className="text-5xl">⚽</p>
             <p className="text-white font-bold text-xl">No brackets yet!</p>
-            <p className="text-[#8899aa]">Be the first to submit your predictions.</p>
-            <Link
-              href="/bracket/new"
-              className="inline-block bg-[#FFD700] text-[#050d1a] font-bold px-6 py-2 rounded-lg hover:bg-[#FFE57F] transition-colors"
-            >
-              Submit First Bracket →
-            </Link>
           </div>
         )}
 
@@ -216,16 +205,6 @@ export default async function HomePage() {
           </>
         )}
 
-        {scoredBrackets.length > 0 && (
-          <div className="text-center">
-            <Link
-              href="/bracket/new"
-              className="inline-flex items-center gap-2 bg-[#0f2040] border border-[#1a3a60] text-white font-bold px-6 py-2 rounded-lg hover:border-[#FFD700] hover:text-[#FFD700] transition-colors"
-            >
-              + Add Another Bracket
-            </Link>
-          </div>
-        )}
       </section>
     </div>
   );
