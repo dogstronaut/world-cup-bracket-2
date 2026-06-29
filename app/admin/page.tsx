@@ -16,9 +16,7 @@ export default function AdminPage() {
   const [brackets, setBrackets] = useState<{ id: string; name: string; createdAt: string }[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
-  const [editingPicksId, setEditingPicksId] = useState<string | null>(null);
-  const [editingPicks, setEditingPicks] = useState<Record<string, (string | null)[]> & { champion?: string | null } | null>(null);
-  const [recaps, setRecaps] = useState<RecapEntry[]>([]);
+const [recaps, setRecaps] = useState<RecapEntry[]>([]);
   const [recapDate, setRecapDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recapTitle, setRecapTitle] = useState('');
   const [recapBody, setRecapBody] = useState('');
@@ -70,24 +68,7 @@ export default function AdminPage() {
     return data;
   }
 
-  async function handleEditPicks(id: string) {
-    const res = await fetch(`/api/admin?bracketId=${id}`, {
-      headers: { Authorization: `Bearer ${password}` },
-    });
-    const data = await res.json();
-    if (data.bracket) {
-      setEditingPicksId(id);
-      setEditingPicks(data.bracket.picks);
-    }
-  }
-
-  async function handleSavePicks(id: string) {
-    await adminAction({ action: 'update_picks', id, picks: editingPicks });
-    setEditingPicksId(null);
-    setEditingPicks(null);
-  }
-
-  async function handleSync() {
+async function handleSync() {
     setSyncing(true);
     await adminAction({ action: 'trigger_sync' });
     setSyncing(false);
@@ -263,12 +244,12 @@ export default function AdminPage() {
                     >
                       Rename
                     </button>
-                    <button
-                      onClick={() => editingPicksId === b.id ? (setEditingPicksId(null), setEditingPicks(null)) : handleEditPicks(b.id)}
+                    <a
+                      href={`/bracket/${b.id}/edit`}
                       className="text-blue-400 hover:text-blue-300 text-xs font-bold border border-blue-800 hover:border-blue-600 px-3 py-1.5 rounded-lg transition-colors"
                     >
                       Edit Picks
-                    </button>
+                    </a>
                     <button
                       onClick={async () => {
                         if (!confirm(`Delete ${b.name}'s bracket? This cannot be undone.`)) return;
@@ -280,75 +261,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-                {editingPicksId === b.id && editingPicks && (
-                  <div className="border-t border-[#1a3a60] pt-3 space-y-3">
-                    <p className="text-xs font-bold text-[#8899aa] uppercase tracking-wide">Edit Picks</p>
-                    {ROUND_KEYS.map((roundKey, roundIdx) => (
-                      <div key={roundKey}>
-                        <p className="text-xs text-[#8899aa] mb-1">{ROUND_NAMES[roundIdx]}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {Array.from({ length: ROUND_SIZES[roundIdx] }).map((_, i) => {
-                            const label = roundIdx === 0
-                              ? `${ROUND_OF_32[i].home} vs ${ROUND_OF_32[i].away}`
-                              : `Match ${i + 1}`;
-                            const options = roundIdx === 0
-                              ? [ROUND_OF_32[i].home, ROUND_OF_32[i].away]
-                              : ALL_TEAMS;
-                            return (
-                              <div key={i} className="flex items-center gap-2">
-                                <span className="text-xs text-[#8899aa] w-24 shrink-0 truncate">{label}</span>
-                                <select
-                                  value={(editingPicks[roundKey]?.[i]) || ''}
-                                  onChange={e => {
-                                    const updated = { ...editingPicks };
-                                    if (!updated[roundKey]) updated[roundKey] = [];
-                                    updated[roundKey] = [...updated[roundKey]];
-                                    updated[roundKey][i] = e.target.value || null;
-                                    setEditingPicks(updated);
-                                  }}
-                                  className="flex-1 bg-[#050d1a] border border-[#1a3a60] rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-[#FFD700]"
-                                >
-                                  <option value="">No pick</option>
-                                  {options.map(team => (
-                                    <option key={team} value={team}>{TEAM_FLAGS[team] || ''} {team}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                    <div>
-                      <p className="text-xs text-[#8899aa] mb-1">Champion</p>
-                      <select
-                        value={editingPicks.champion || ''}
-                        onChange={e => setEditingPicks({ ...editingPicks, champion: e.target.value || null })}
-                        className="bg-[#050d1a] border border-[#1a3a60] rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-[#FFD700]"
-                      >
-                        <option value="">No pick</option>
-                        {ALL_TEAMS.map(team => (
-                          <option key={team} value={team}>{TEAM_FLAGS[team] || ''} {team}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={() => handleSavePicks(b.id)}
-                        className="bg-[#FFD700] text-[#050d1a] text-xs font-black px-4 py-2 rounded-lg hover:bg-[#FFE57F]"
-                      >
-                        Save Picks
-                      </button>
-                      <button
-                        onClick={() => { setEditingPicksId(null); setEditingPicks(null); }}
-                        className="text-[#8899aa] text-xs font-bold px-3 py-2"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {editingId === b.id && (
+{editingId === b.id && (
                   <div className="flex gap-2">
                     <input
                       type="text"
