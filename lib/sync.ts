@@ -3,7 +3,7 @@ import { Results } from './types';
 import { getResults, saveResults, addSyncLog } from './storage';
 import { ROUND_OF_32 } from './bracket';
 
-const ESPN_URL = 'https://www.espn.com/soccer/schedule/_/league/fifa.world';
+const ESPN_URL = 'https://www.espn.com/soccer/bracket';
 
 const PARSE_SYSTEM_PROMPT = `You are a sports data assistant for the 2026 FIFA World Cup knockout stage.
 
