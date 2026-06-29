@@ -123,12 +123,22 @@ export async function syncResults(): Promise<{ success: boolean; message: string
       if ((block as any).type === 'text') jsonText += (block as any).text;
     }
 
-    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // Find the first complete JSON object using bracket counting
+    const start = jsonText.indexOf('{');
+    if (start === -1) {
       throw new Error(`No JSON in response. Got: ${jsonText.slice(0, 300)}`);
     }
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < jsonText.length; i++) {
+      if (jsonText[i] === '{') depth++;
+      else if (jsonText[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end === -1) {
+      throw new Error(`Incomplete JSON in response. Got: ${jsonText.slice(0, 300)}`);
+    }
 
-    const newResults: Results = JSON.parse(jsonMatch[0]);
+    const newResults: Results = JSON.parse(jsonText.slice(start, end + 1));
 
     if (!Array.isArray(newResults.r0) || newResults.r0.length !== 16) {
       throw new Error('Invalid results structure returned');
