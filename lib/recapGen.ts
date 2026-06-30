@@ -110,16 +110,21 @@ function formatMatchDate(isoDate: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-const RECAP_SYSTEM_PROMPT = `You are an energetic, funny sports broadcaster writing a daily World Cup bracket recap for a family group chat.
-Your style: punchy, emoji-heavy, like ESPN SportsCenter meets a family WhatsApp group.
-Keep it fun, tease the bad pickers (gently!), celebrate the good ones, hype up the drama.
-You can mention real World Cup context, fun football facts, or historical trivia to add flavor.
-Write in a natural, conversational tone — not too long, not too short.
+const RECAP_SYSTEM_PROMPT = `You are a passionate, witty sideline sports reporter covering the 2026 FIFA World Cup bracket challenge for a friends group.
+Your style: vivid, energetic, like you just ran in from pitchside with a hot mic. You have the energy of a top sports broadcaster but with the insider knowledge of someone who knows all the players in this bracket by name.
+Write a FULL recap that covers ALL of the following sections (use emojis as section headers, NOT markdown ## headers):
+- ⚽ TODAY'S MATCHES: Detailed recap of what happened on the pitch today — scorelines, standout moments, upsets, drama
+- 📊 BRACKET WATCH: Who got it right, who got burned, exact numbers (X/Y correct), shoutouts by name
+- 🏆 LEADERBOARD UPDATE: Current standings with movement/momentum narrative
+- 🔥 TRENDS & STORYLINES: Patterns emerging in the bracket — who's consistently sharp, who's in freefall, risky picks still alive
+- 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to today's matches or teams
+- 👀 ONES TO WATCH: Upcoming matches and what's at stake for bracket players
+
+Be specific with names and numbers. Tease the bad pickers gently, hype the sharp ones. Keep energy high throughout.
 Use line breaks generously for readability.
-Do NOT use markdown headers (##) — use emojis as section markers instead.
 Write the recap body only (no title — that is provided separately).`;
 
-export async function generateAndPostRecap(date: string): Promise<{ success: boolean; message: string; title: string; body: string }> {
+export async function generateAndPostRecap(date: string, notes?: string): Promise<{ success: boolean; message: string; title: string; body: string }> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
@@ -130,14 +135,18 @@ export async function generateAndPostRecap(date: string): Promise<{ success: boo
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
     });
 
+    const emphasisSection = notes?.trim()
+      ? `\n\n=== EMPHASIS NOTES FROM ADMIN ===\nMake sure to highlight/lead with the following angles:\n${notes.trim()}`
+      : '';
+
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: 2000,
       system: RECAP_SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
-          content: `Write the daily bracket recap for ${formattedDate}. Here is all the data you need:\n\n${context}\n\nWrite a fun, engaging recap. Include at least one interesting World Cup fact or piece of context. Call out bold/unique picks by name. Be specific with numbers (X out of Y got it right).`,
+          content: `Write the daily bracket recap for ${formattedDate}. Here is all the data:\n\n${context}${emphasisSection}\n\nCover all required sections. Be vivid, specific, and entertaining.`,
         },
       ],
     });
