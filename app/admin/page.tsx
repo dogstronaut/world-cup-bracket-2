@@ -344,7 +344,7 @@ async function handleSync() {
             disabled={generating || !recapDate}
             className="w-full bg-[#FFD700] text-[#050d1a] font-black px-5 py-2.5 rounded-lg hover:bg-[#FFE57F] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {generating ? '✍️ Generating recap...' : '⚡ Auto-Generate & Post Recap'}
+            {generating ? '✍️ Generating recap...' : '⚡ Auto-Generate Recap'}
           </button>
 
           <div className="flex items-center gap-3">
