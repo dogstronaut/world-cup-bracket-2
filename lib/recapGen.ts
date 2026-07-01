@@ -1,41 +1,58 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ROUND_OF_32, ROUND_POINTS, TEAM_FLAGS } from './bracket';
+import { ROUND_OF_32, TEAM_FLAGS } from './bracket';
 import { getAllBrackets, getResults } from './storage';
 import { calculateScore } from './scoring';
 import { Bracket, Results } from './types';
 
 const ROUND_KEYS = ['r0', 'r1', 'r2', 'r3', 'r4'] as const;
 
-function buildRecapContext(brackets: Bracket[], results: Results, targetDate: string): string {
-  // Find matches that completed on or before targetDate with a result set
-  const completedToday: { match: string; winner: string; round: string; index: number }[] = [];
+function formatMatchDate(isoDate: string): string {
+  // Convert "2026-06-29" → "Jun 29" to match ROUND_OF_32 date format
+  const d = new Date(isoDate + 'T12:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
 
-  for (let i = 0; i < 16; i++) {
-    if (results.r0[i] && ROUND_OF_32[i].date === formatMatchDate(targetDate)) {
-      completedToday.push({
-        match: `${ROUND_OF_32[i].home} vs ${ROUND_OF_32[i].away}`,
-        winner: results.r0[i]!,
-        round: 'Round of 32',
-        index: i,
-      });
-    }
-  }
+function offsetDate(isoDate: string, days: number): string {
+  const d = new Date(isoDate + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
 
-  // All completed results so far (for running stats)
-  const allCompleted: { round: string; index: number; winner: string }[] = [];
-  for (let i = 0; i < 16; i++) {
-    if (results.r0[i]) allCompleted.push({ round: 'r0', index: i, winner: results.r0[i]! });
-  }
-
-  // Per-match bracket stats for completed matches
-  const matchStats = completedToday.map(({ match, winner, round, index }) => {
-    const rk = 'r0' as const;
-    const correct = brackets.filter(b => b.picks[rk][index] === winner).length;
-    const wrong = brackets.filter(b => b.picks[rk][index] && b.picks[rk][index] !== winner).length;
-    const correctNames = brackets.filter(b => b.picks[rk][index] === winner).map(b => b.name);
-    const wrongNames = brackets.filter(b => b.picks[rk][index] && b.picks[rk][index] !== winner).map(b => b.name);
-    return { match, winner, correct, wrong, correctNames, wrongNames, total: correct + wrong };
+function buildMatchStats(brackets: Bracket[], results: Results, matchIndices: number[]) {
+  return matchIndices.map(i => {
+    const winner = results.r0[i]!;
+    const correctNames = brackets.filter(b => b.picks.r0[i] === winner).map(b => b.name);
+    const wrongNames = brackets.filter(b => b.picks.r0[i] && b.picks.r0[i] !== winner).map(b => b.name);
+    return {
+      match: `${ROUND_OF_32[i].home} vs ${ROUND_OF_32[i].away}`,
+      winner,
+      correctNames,
+      wrongNames,
+      total: correctNames.length + wrongNames.length,
+    };
   });
+}
+
+function buildRecapContext(brackets: Bracket[], results: Results, targetDate: string): string {
+  const yesterdayDate = formatMatchDate(offsetDate(targetDate, -1));
+  const todayDate = formatMatchDate(targetDate);
+
+  // Bucket completed R32 matches by date
+  const yesterdayIndices: number[] = [];
+  const todayIndices: number[] = [];
+  const earlierIndices: number[] = [];
+
+  for (let i = 0; i < 16; i++) {
+    if (!results.r0[i]) continue;
+    const matchDate = ROUND_OF_32[i].date;
+    if (matchDate === todayDate) todayIndices.push(i);
+    else if (matchDate === yesterdayDate) yesterdayIndices.push(i);
+    else earlierIndices.push(i);
+  }
+
+  const yesterdayStats = buildMatchStats(brackets, results, yesterdayIndices);
+  const todayStats = buildMatchStats(brackets, results, todayIndices);
+  const earlierStats = buildMatchStats(brackets, results, earlierIndices);
 
   // Champion pick distribution
   const champCounts: Record<string, string[]> = {};
@@ -47,7 +64,7 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
   }
   const champSorted = Object.entries(champCounts).sort((a, b) => b[1].length - a[1].length);
 
-  // Current leaderboard (top 5)
+  // Current leaderboard (top 10)
   const scored = brackets
     .map(b => ({ name: b.name, score: calculateScore(b.picks, results) }))
     .sort((a, b) => b.score.points - a.score.points || a.name.localeCompare(b.name))
@@ -60,35 +77,47 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
       const pick = b.picks.r0[i];
       if (!pick) continue;
       const match = ROUND_OF_32[i];
-      const isUnderdog = pick === match.away; // away team is generally the underdog
+      const isUnderdog = pick === match.away;
       const onlyOne = brackets.filter(br => br.picks.r0[i] === pick).length === 1;
       if (onlyOne && isUnderdog) {
         unusualPicks.push(`${b.name} is the ONLY person who picked ${pick} (vs ${pick === match.home ? match.away : match.home})`);
       }
     }
-    // Solo champion pick
     if (b.picks.champion && champCounts[b.picks.champion]?.length === 1) {
       unusualPicks.push(`${b.name} is the ONLY person picking ${b.picks.champion} 🏆 to win it all`);
     }
   }
 
-  // Upcoming matches (not yet played)
-  const upcoming = ROUND_OF_32
+  // TODAY'S upcoming matches only (not yet played, scheduled for today)
+  const todayUpcoming = ROUND_OF_32
     .map((m, i) => ({ ...m, i }))
-    .filter(m => !results.r0[m.i]);
+    .filter(m => !results.r0[m.i] && m.date === todayDate);
+
+  function renderStats(stats: ReturnType<typeof buildMatchStats>) {
+    return stats.map(s => `
+Match: ${s.match}
+Winner: ${s.winner} ${TEAM_FLAGS[s.winner] || ''}
+Bracket accuracy: ${s.correctNames.length}/${s.total} got it right (${s.total > 0 ? Math.round((s.correctNames.length / s.total) * 100) : 0}%)
+✅ Correct: ${s.correctNames.join(', ') || 'nobody'}
+❌ Wrong: ${s.wrongNames.join(', ') || 'nobody'}
+`).join('\n');
+  }
 
   return `
 TODAY'S DATE: ${targetDate}
-TOTAL BRACKETS SUBMITTED: ${brackets.length}
+TOTAL BRACKETS: ${brackets.length}
 
-=== MATCHES COMPLETED TODAY ===
-${matchStats.length === 0 ? 'No matches played today yet.' : matchStats.map(s => `
-Match: ${s.match}
-Winner: ${s.winner} ${TEAM_FLAGS[s.winner] || ''}
-Bracket accuracy: ${s.correct}/${s.total} got it right (${Math.round((s.correct / s.total) * 100)}%)
-✅ Correct picks: ${s.correctNames.join(', ')}
-❌ Wrong picks: ${s.wrongNames.join(', ')}
-`).join('\n')}
+=== YESTERDAY'S COMPLETED MATCHES (${yesterdayDate}) ===
+${yesterdayStats.length === 0 ? 'None.' : renderStats(yesterdayStats)}
+
+=== TODAY'S COMPLETED MATCHES (${todayDate}) ===
+${todayStats.length === 0 ? 'No matches completed today yet.' : renderStats(todayStats)}
+
+=== EARLIER COMPLETED MATCHES (2+ days ago) ===
+${earlierStats.length === 0 ? 'None.' : renderStats(earlierStats)}
+
+=== TODAY'S REMAINING MATCHES (still to play today) ===
+${todayUpcoming.length === 0 ? 'All of today\'s matches are done (or none scheduled today).' : todayUpcoming.map(m => `${m.home} vs ${m.away}`).join('\n')}
 
 === CURRENT LEADERBOARD (top 10) ===
 ${scored.map((s, i) => `${i + 1}. ${s.name} — ${s.score.points} pts`).join('\n')}
@@ -98,29 +127,23 @@ ${champSorted.map(([team, names]) => `${team} ${TEAM_FLAGS[team] || ''}: ${names
 
 === BOLD / UNIQUE PICKS ===
 ${unusualPicks.length > 0 ? unusualPicks.join('\n') : 'No unique solo picks yet.'}
-
-=== UPCOMING MATCHES STILL TO PLAY ===
-${upcoming.map(m => `${m.home} vs ${m.away} — ${m.date}`).join('\n')}
 `.trim();
 }
 
-function formatMatchDate(isoDate: string): string {
-  // Convert "2026-06-29" → "Jun 29" to match ROUND_OF_32 date format
-  const d = new Date(isoDate + 'T12:00:00Z');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-}
-
 const RECAP_SYSTEM_PROMPT = `You are a passionate, witty sideline sports reporter covering the 2026 FIFA World Cup bracket challenge for a friends group.
-Your style: vivid, energetic, like you just ran in from pitchside with a hot mic. You have the energy of a top sports broadcaster but with the insider knowledge of someone who knows all the players in this bracket by name.
-Write a FULL recap that covers ALL of the following sections (use emojis as section headers, NOT markdown ## headers):
-- ⚽ TODAY'S MATCHES: Detailed recap of what happened on the pitch today — scorelines, standout moments, upsets, drama
-- 📊 BRACKET WATCH: Who got it right, who got burned, exact numbers (X/Y correct), shoutouts by name
-- 🏆 LEADERBOARD UPDATE: Current standings with movement/momentum narrative
-- 🔥 TRENDS & STORYLINES: Patterns emerging in the bracket — who's consistently sharp, who's in freefall, risky picks still alive
-- 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to today's matches or teams
-- 👀 ONES TO WATCH: Upcoming matches and what's at stake for bracket players
+Your style: vivid, energetic, like you just ran in from pitchside with a hot mic. You know every player in this bracket by name and love calling them out.
 
-Be specific with names and numbers. Tease the bad pickers gently, hype the sharp ones. Keep energy high throughout.
+Write a FULL recap in this exact order (use emojis as section headers, NOT markdown ## headers):
+
+1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Be specific and dramatic.
+2. 🏟️ TODAY'S ACTION: Recap any matches already completed today. If matches are still to play today, hype what's at stake for bracket players — but DO NOT mention or tease matches scheduled for future days beyond today.
+3. 📊 BRACKET WATCH: Overall bracket accuracy, standout correct/wrong picks, call out bold or unique picks by name.
+4. 🏆 LEADERBOARD: Current standings with narrative — who's climbing, who's fading, who's in danger.
+5. 🔥 TRENDS: Patterns in the bracket — who's been consistently right, any picks on the bubble, champion picks still alive.
+6. 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to today's teams or matches.
+
+IMPORTANT: DO NOT tease or preview matches scheduled for future days beyond today. Only reference today's remaining matches if they exist.
+Be specific with names and numbers. Keep energy high throughout.
 Use line breaks generously for readability.
 Write the recap body only (no title — that is provided separately).`;
 
@@ -141,12 +164,12 @@ export async function generateAndPostRecap(date: string, notes?: string): Promis
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 3000,
       system: RECAP_SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
-          content: `Write the daily bracket recap for ${formattedDate}. Here is all the data:\n\n${context}${emphasisSection}\n\nCover all required sections. Be vivid, specific, and entertaining.`,
+          content: `Write the daily bracket recap for ${formattedDate}. Here is all the data:\n\n${context}${emphasisSection}\n\nCover all required sections in order. Be vivid, specific, and entertaining.`,
         },
       ],
     });
