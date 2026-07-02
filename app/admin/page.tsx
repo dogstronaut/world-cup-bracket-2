@@ -417,16 +417,7 @@ async function handleSync() {
       <div className="bg-red-950 border border-red-800 rounded-xl p-5 space-y-4">
         <h2 className="font-bold text-red-300">⚠️ Danger Zone</h2>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={async () => {
-              if (!confirm('Clear R16, QF, SF, Final, and Champion results? R32 picks will be preserved.')) return;
-              await adminAction({ action: 'clear_later_rounds' });
-            }}
-            className="flex-1 bg-orange-900 border border-orange-700 text-orange-200 font-bold px-4 py-2 rounded-lg hover:bg-orange-800 transition-colors"
-          >
-            Clear R16+ Results
-          </button>
-          <button
+<button
             onClick={() => handleReset('reset_results')}
             className="flex-1 bg-red-900 border border-red-700 text-red-200 font-bold px-4 py-2 rounded-lg hover:bg-red-800 transition-colors"
           >
