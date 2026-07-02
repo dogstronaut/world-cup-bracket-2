@@ -157,7 +157,9 @@ export async function syncResults(): Promise<{ success: boolean; message: string
     }
 
     // Additive merge — only fill null slots, never overwrite existing data
+    // Only sync r1+ if all 16 R32 matches are complete (prevents hallucinated later-round results)
     const currentResults = await getResults();
+    const r0Complete = newResults.r0.every(v => v !== null);
     const merged: Results = {
       r0: [...currentResults.r0],
       r1: [...currentResults.r1],
@@ -168,7 +170,7 @@ export async function syncResults(): Promise<{ success: boolean; message: string
     };
 
     let changes = 0;
-    const rounds = ['r0', 'r1', 'r2', 'r3', 'r4'] as const;
+    const rounds = (r0Complete ? ['r0', 'r1', 'r2', 'r3', 'r4'] : ['r0']) as ('r0' | 'r1' | 'r2' | 'r3' | 'r4')[];
     for (const round of rounds) {
       for (let i = 0; i < newResults[round].length; i++) {
         if (merged[round][i] === null && newResults[round][i]) {

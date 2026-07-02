@@ -40,6 +40,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Results reset' });
     }
 
+    if (action === 'clear_later_rounds') {
+      const results = await getResults();
+      results.r1 = Array(8).fill(null);
+      results.r2 = Array(4).fill(null);
+      results.r3 = Array(2).fill(null);
+      results.r4 = Array(1).fill(null);
+      results.champion = null;
+      await saveResults(results);
+      return NextResponse.json({ success: true, message: 'R16 and beyond cleared (R32 preserved)' });
+    }
+
     if (action === 'delete_all_brackets') {
       await deleteAllBrackets();
       return NextResponse.json({ success: true, message: 'All brackets deleted' });
