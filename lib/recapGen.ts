@@ -1,13 +1,23 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ROUND_OF_32, TEAM_FLAGS } from './bracket';
+import { ROUND_OF_32, ROUND_NAMES, ROUND_SIZES, TEAM_FLAGS } from './bracket';
 import { getAllBrackets, getResults } from './storage';
 import { calculateScore } from './scoring';
 import { Bracket, Results } from './types';
 
-const ROUND_KEYS = ['r0', 'r1', 'r2', 'r3', 'r4'] as const;
+type RoundKey = 'r0' | 'r1' | 'r2' | 'r3' | 'r4';
+const ROUND_KEYS: RoundKey[] = ['r0', 'r1', 'r2', 'r3', 'r4'];
+
+// Date ranges for each round (used for yesterday/today bucketing in later rounds)
+// We treat a round as "active" during its date window; individual match dates aren't stored for r1+
+const ROUND_DATE_RANGES: { start: string; end: string }[] = [
+  { start: 'Jun 28', end: 'Jul 3' },  // R32
+  { start: 'Jul 5',  end: 'Jul 8' },  // R16
+  { start: 'Jul 11', end: 'Jul 12' }, // QF
+  { start: 'Jul 15', end: 'Jul 16' }, // SF
+  { start: 'Jul 19', end: 'Jul 19' }, // Final
+];
 
 function formatMatchDate(isoDate: string): string {
-  // Convert "2026-06-29" → "Jun 29" to match ROUND_OF_32 date format
   const d = new Date(isoDate + 'T12:00:00Z');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
@@ -18,41 +28,99 @@ function offsetDate(isoDate: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function buildMatchStats(brackets: Bracket[], results: Results, matchIndices: number[]) {
-  return matchIndices.map(i => {
-    const winner = results.r0[i]!;
-    const correctNames = brackets.filter(b => b.picks.r0[i] === winner).map(b => b.name);
-    const wrongNames = brackets.filter(b => b.picks.r0[i] && b.picks.r0[i] !== winner).map(b => b.name);
-    return {
-      match: `${ROUND_OF_32[i].home} vs ${ROUND_OF_32[i].away}`,
-      winner,
-      correctNames,
-      wrongNames,
-      total: correctNames.length + wrongNames.length,
+// Determine which round index is active on a given formatted date (e.g. "Jul 6")
+function getActiveRoundForDate(formattedDate: string): number {
+  // Parse "Jul 6" into a comparable month+day number
+  function parseMonthDay(s: string): number {
+    const months: Record<string, number> = {
+      Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+      Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
     };
-  });
+    const [mon, day] = s.split(' ');
+    return (months[mon] ?? 0) * 100 + parseInt(day);
+  }
+  const target = parseMonthDay(formattedDate);
+  for (let r = ROUND_DATE_RANGES.length - 1; r >= 0; r--) {
+    const start = parseMonthDay(ROUND_DATE_RANGES[r].start);
+    const end = parseMonthDay(ROUND_DATE_RANGES[r].end);
+    if (target >= start && target <= end) return r;
+  }
+  return -1;
+}
+
+// Get a human-readable match label for any round/index by looking up actual winners from r0
+function getMatchLabel(results: Results, round: number, index: number): string {
+  if (round === 0) {
+    return `${ROUND_OF_32[index].home} vs ${ROUND_OF_32[index].away}`;
+  }
+  const prevKey = ROUND_KEYS[round - 1];
+  const teamA = results[prevKey][index * 2] ?? `Match ${index * 2 + 1} winner`;
+  const teamB = results[prevKey][index * 2 + 1] ?? `Match ${index * 2 + 2} winner`;
+  return `${teamA} vs ${teamB}`;
+}
+
+// Build bracket pick stats for a given round/index result
+function getPickStats(brackets: Bracket[], roundKey: RoundKey, index: number, winner: string) {
+  const correctNames = brackets.filter(b => b.picks[roundKey][index] === winner).map(b => b.name);
+  const wrongNames = brackets.filter(b => b.picks[roundKey][index] && b.picks[roundKey][index] !== winner).map(b => b.name);
+  return { correctNames, wrongNames, total: correctNames.length + wrongNames.length };
+}
+
+function renderMatchBlock(
+  label: string,
+  winner: string,
+  correctNames: string[],
+  wrongNames: string[],
+  total: number
+): string {
+  const pct = total > 0 ? Math.round((correctNames.length / total) * 100) : 0;
+  return `Match: ${label}
+Winner: ${winner} ${TEAM_FLAGS[winner] || ''}
+Bracket accuracy: ${correctNames.length}/${total} got it right (${pct}%)
+✅ Correct: ${correctNames.join(', ') || 'nobody'}
+❌ Wrong: ${wrongNames.join(', ') || 'nobody'}`;
 }
 
 function buildRecapContext(brackets: Bracket[], results: Results, targetDate: string): string {
-  const yesterdayDate = formatMatchDate(offsetDate(targetDate, -1));
-  const todayDate = formatMatchDate(targetDate);
+  const todayFormatted = formatMatchDate(targetDate);
+  const yesterdayFormatted = formatMatchDate(offsetDate(targetDate, -1));
 
-  // Bucket completed R32 matches by date
-  const yesterdayIndices: number[] = [];
-  const todayIndices: number[] = [];
-  const earlierIndices: number[] = [];
+  const todayRound = getActiveRoundForDate(todayFormatted);
+  const yesterdayRound = getActiveRoundForDate(yesterdayFormatted);
 
-  for (let i = 0; i < 16; i++) {
-    if (!results.r0[i]) continue;
-    const matchDate = ROUND_OF_32[i].date;
-    if (matchDate === todayDate) todayIndices.push(i);
-    else if (matchDate === yesterdayDate) yesterdayIndices.push(i);
-    else earlierIndices.push(i);
+  // Collect completed matches bucketed into: yesterday, today, earlier
+  const yesterdayMatches: string[] = [];
+  const todayMatches: string[] = [];
+  const earlierMatches: string[] = [];
+
+  for (let r = 0; r <= 4; r++) {
+    const rk = ROUND_KEYS[r];
+    const size = ROUND_SIZES[r];
+    for (let i = 0; i < size; i++) {
+      const winner = results[rk][i];
+      if (!winner) continue;
+
+      const label = getMatchLabel(results, r, i);
+      const { correctNames, wrongNames, total } = getPickStats(brackets, rk, i, winner);
+      const block = renderMatchBlock(label, winner, correctNames, wrongNames, total);
+      const roundName = ROUND_NAMES[r];
+
+      const entry = `[${roundName}]\n${block}`;
+
+      // For R32 we have exact match dates; for later rounds use round date range
+      if (r === 0) {
+        const matchDate = ROUND_OF_32[i].date;
+        if (matchDate === todayFormatted) todayMatches.push(entry);
+        else if (matchDate === yesterdayFormatted) yesterdayMatches.push(entry);
+        else earlierMatches.push(entry);
+      } else {
+        // For r1+, bucket by which round is active on yesterday/today
+        if (r === todayRound) todayMatches.push(entry);
+        else if (r === yesterdayRound) yesterdayMatches.push(entry);
+        else earlierMatches.push(entry);
+      }
+    }
   }
-
-  const yesterdayStats = buildMatchStats(brackets, results, yesterdayIndices);
-  const todayStats = buildMatchStats(brackets, results, todayIndices);
-  const earlierStats = buildMatchStats(brackets, results, earlierIndices);
 
   // Champion pick distribution
   const champCounts: Record<string, string[]> = {};
@@ -70,7 +138,7 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
     .sort((a, b) => b.score.points - a.score.points || a.name.localeCompare(b.name))
     .slice(0, 10);
 
-  // Bold / unusual picks
+  // Unique/bold picks across all rounds still alive
   const unusualPicks: string[] = [];
   for (const b of brackets) {
     for (let i = 0; i < 16; i++) {
@@ -88,36 +156,35 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
     }
   }
 
-  // TODAY'S upcoming matches only (not yet played, scheduled for today)
-  const todayUpcoming = ROUND_OF_32
-    .map((m, i) => ({ ...m, i }))
-    .filter(m => !results.r0[m.i] && m.date === todayDate);
-
-  function renderStats(stats: ReturnType<typeof buildMatchStats>) {
-    return stats.map(s => `
-Match: ${s.match}
-Winner: ${s.winner} ${TEAM_FLAGS[s.winner] || ''}
-Bracket accuracy: ${s.correctNames.length}/${s.total} got it right (${s.total > 0 ? Math.round((s.correctNames.length / s.total) * 100) : 0}%)
-✅ Correct: ${s.correctNames.join(', ') || 'nobody'}
-❌ Wrong: ${s.wrongNames.join(', ') || 'nobody'}
-`).join('\n');
+  // Today's remaining matches (slots with no winner yet in the active round)
+  let todayUpcoming: string[] = [];
+  if (todayRound >= 0) {
+    const rk = ROUND_KEYS[todayRound];
+    const size = ROUND_SIZES[todayRound];
+    for (let i = 0; i < size; i++) {
+      if (!results[rk][i]) {
+        // For R32, only include if scheduled today
+        if (todayRound === 0 && ROUND_OF_32[i].date !== todayFormatted) continue;
+        todayUpcoming.push(getMatchLabel(results, todayRound, i));
+      }
+    }
   }
 
   return `
 TODAY'S DATE: ${targetDate}
 TOTAL BRACKETS: ${brackets.length}
 
-=== YESTERDAY'S COMPLETED MATCHES (${yesterdayDate}) ===
-${yesterdayStats.length === 0 ? 'None.' : renderStats(yesterdayStats)}
+=== YESTERDAY'S COMPLETED MATCHES (${yesterdayFormatted}) ===
+${yesterdayMatches.length === 0 ? 'None.' : yesterdayMatches.join('\n\n')}
 
-=== TODAY'S COMPLETED MATCHES (${todayDate}) ===
-${todayStats.length === 0 ? 'No matches completed today yet.' : renderStats(todayStats)}
+=== TODAY'S COMPLETED MATCHES (${todayFormatted}) ===
+${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.join('\n\n')}
 
-=== EARLIER COMPLETED MATCHES (2+ days ago) ===
-${earlierStats.length === 0 ? 'None.' : renderStats(earlierStats)}
+=== EARLIER COMPLETED MATCHES ===
+${earlierMatches.length === 0 ? 'None.' : earlierMatches.join('\n\n')}
 
 === TODAY'S REMAINING MATCHES (still to play today) ===
-${todayUpcoming.length === 0 ? 'All of today\'s matches are done (or none scheduled today).' : todayUpcoming.map(m => `${m.home} vs ${m.away}`).join('\n')}
+${todayUpcoming.length === 0 ? 'All of today\'s matches are done (or none scheduled today).' : todayUpcoming.join('\n')}
 
 === CURRENT LEADERBOARD (top 10) ===
 ${scored.map((s, i) => `${i + 1}. ${s.name} — ${s.score.points} pts`).join('\n')}
