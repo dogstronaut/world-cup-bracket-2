@@ -138,25 +138,6 @@ export async function getResults(): Promise<Results> {
       }
     }
   }
-  // If R32 isn't complete, clear any r1+ data that may have been hallucinated by sync
-  const r0Complete = results.r0.every(v => v !== null);
-  if (!r0Complete) {
-    const hasLaterRoundData =
-      results.r1.some(v => v !== null) ||
-      results.r2.some(v => v !== null) ||
-      results.r3.some(v => v !== null) ||
-      results.r4.some(v => v !== null) ||
-      results.champion !== null;
-    if (hasLaterRoundData) {
-      results.r1 = Array(8).fill(null);
-      results.r2 = Array(4).fill(null);
-      results.r3 = Array(2).fill(null);
-      results.r4 = Array(1).fill(null);
-      results.champion = null;
-      dirty = true;
-    }
-  }
-
   if (dirty) await kvSetObj(RESULTS_KEY, results);
 
   return results;
