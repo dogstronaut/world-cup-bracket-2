@@ -1,9 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { ROUND_OF_32, ROUND_NAMES, ROUND_SIZES, ALL_TEAMS, TEAM_FLAGS } from '@/lib/bracket';
-import { Results, SyncLogEntry, RecapEntry } from '@/lib/types';
-
-const ROUND_KEYS = ['r0', 'r1', 'r2', 'r3', 'r4'] as const;
+import { TEAM_FLAGS } from '@/lib/bracket';
+import { SyncLogEntry, RecapEntry } from '@/lib/types';
 
 export default function AdminPage() {
   const [password, setPassword] = useState('');
@@ -12,8 +10,7 @@ export default function AdminPage() {
 
   const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [results, setResults] = useState<Results | null>(null);
-  const [brackets, setBrackets] = useState<{ id: string; name: string; createdAt: string }[]>([]);
+const [brackets, setBrackets] = useState<{ id: string; name: string; createdAt: string }[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 const [recaps, setRecaps] = useState<RecapEntry[]>([]);
@@ -34,8 +31,7 @@ const [recaps, setRecaps] = useState<RecapEntry[]>([]);
     const data = await res.json();
     setSyncLog(data.syncLog || []);
     setLastSync(data.lastSync || null);
-    setResults(data.results || null);
-    setBrackets(data.brackets || []);
+setBrackets(data.brackets || []);
     setRecaps(data.recaps || []);
     return true;
   }, []);
@@ -75,11 +71,7 @@ async function handleSync() {
     setSyncing(false);
   }
 
-  async function handleOverride(round: string, index: number, winner: string) {
-    await adminAction({ action: 'override_result', round, index, winner: winner || null });
-  }
-
-  async function handleReset(action: string) {
+async function handleReset(action: string) {
     const label = action === 'reset_results' ? 'reset all results' : 'delete ALL brackets';
     if (!confirm(`Are you sure you want to ${label}? This cannot be undone.`)) return;
     await adminAction({ action });
@@ -167,62 +159,6 @@ async function handleSync() {
         )}
       </div>
 
-      {/* Manual Override */}
-      {results && (
-        <div className="bg-[#0f2040] border border-[#1a3a60] rounded-xl p-5 space-y-5">
-          <h2 className="font-bold text-white">🎯 Manual Result Override</h2>
-          <p className="text-[#8899aa] text-sm">Override individual match results if auto-sync gets a team name wrong.</p>
-
-          {ROUND_KEYS.map((roundKey, roundIdx) => (
-            <div key={roundKey}>
-              <h3 className="text-sm font-bold text-[#8899aa] uppercase tracking-wide mb-2">
-                {ROUND_NAMES[roundIdx]}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {Array.from({ length: ROUND_SIZES[roundIdx] }).map((_, i) => {
-                  const label = roundIdx === 0
-                    ? `${ROUND_OF_32[i].home} vs ${ROUND_OF_32[i].away}`
-                    : `Match ${i + 1}`;
-                  const options = roundIdx === 0
-                    ? [ROUND_OF_32[i].home, ROUND_OF_32[i].away]
-                    : ALL_TEAMS;
-
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-[#8899aa] w-24 shrink-0 truncate">{label}</span>
-                      <select
-                        value={results[roundKey][i] || ''}
-                        onChange={e => handleOverride(roundKey, i, e.target.value)}
-                        className="flex-1 bg-[#050d1a] border border-[#1a3a60] rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:border-[#FFD700]"
-                      >
-                        <option value="">Not yet played</option>
-                        {options.map(team => (
-                          <option key={team} value={team}>{TEAM_FLAGS[team] || ''} {team}</option>
-                        ))}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-
-          {/* Champion override */}
-          <div>
-            <h3 className="text-sm font-bold text-[#8899aa] uppercase tracking-wide mb-2">Champion</h3>
-            <select
-              value={results.champion || ''}
-              onChange={e => adminAction({ action: 'override_result', round: 'r4', index: 0, winner: e.target.value || null }).then(() => handleOverride('r4', 0, e.target.value))}
-              className="bg-[#050d1a] border border-[#1a3a60] rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-[#FFD700]"
-            >
-              <option value="">Not yet decided</option>
-              {ALL_TEAMS.map(team => (
-                <option key={team} value={team}>{TEAM_FLAGS[team] || ''} {team}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
 
       {/* Submitted Brackets */}
       <div className="bg-[#0f2040] border border-[#1a3a60] rounded-xl p-5 space-y-3">
