@@ -229,14 +229,15 @@ export async function generateAndPostRecap(date: string, notes?: string): Promis
       ? `\n\n=== EMPHASIS NOTES FROM ADMIN ===\nMake sure to highlight/lead with the following angles:\n${notes.trim()}`
       : '';
 
-    const response = await client.messages.create({
+    const response: any = await (client.messages.create as any)({
       model: 'claude-sonnet-4-6',
       max_tokens: 3000,
       system: RECAP_SYSTEM_PROMPT,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [
         {
           role: 'user',
-          content: `Write the daily bracket recap for ${formattedDate}. Here is all the data:\n\n${context}${emphasisSection}\n\nCover all required sections in order. Be vivid, specific, and entertaining.`,
+          content: `Write the daily bracket recap for ${formattedDate}. Here is all the bracket data:\n\n${context}${emphasisSection}\n\nBefore writing, use web_search to find highlights, key moments, scorelines, and notable storylines from yesterday's and today's 2026 FIFA World Cup matches. Use real article language and specific details (goals, scorers, drama, upsets) to make the recap vivid. Then cover all required sections in order.`,
         },
       ],
     });
