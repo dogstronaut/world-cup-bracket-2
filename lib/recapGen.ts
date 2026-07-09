@@ -188,18 +188,18 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
 
   const upcomingRoundName = upcomingRound >= 0 ? ROUND_NAMES[upcomingRound] : 'None';
 
+  // Between-rounds day: no matches yesterday or today — pure preview mode
+  const betweenRounds = yesterdayMatches.length === 0 && todayMatches.length === 0;
+
   return `
 TODAY'S DATE: ${targetDate}
 TOTAL BRACKETS: ${brackets.length}
-
-=== YESTERDAY'S COMPLETED MATCHES (${yesterdayFormatted}) ===
+${betweenRounds ? '\nMODE: NO MATCHES YESTERDAY OR TODAY — THIS IS A PREVIEW-ONLY RECAP. Do not recap earlier rounds. Go straight to the upcoming match previews.\n' : ''}
+${!betweenRounds ? `=== YESTERDAY'S COMPLETED MATCHES (${yesterdayFormatted}) ===
 ${yesterdayMatches.length === 0 ? 'None.' : yesterdayMatches.join('\n\n')}
 
 === TODAY'S COMPLETED MATCHES (${todayFormatted}) ===
-${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.join('\n\n')}
-
-=== EARLIER COMPLETED MATCHES ===
-${earlierMatches.length === 0 ? 'None.' : earlierMatches.join('\n\n')}
+${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.join('\n\n')}` : ''}
 
 === UPCOMING: ${upcomingRoundName.toUpperCase()} — WHO HAS PICKS ALIVE ===
 ${upcomingMatchPreviews.length === 0 ? 'Tournament complete.' : upcomingMatchPreviews.join('\n\n')}
@@ -218,19 +218,25 @@ ${unusualPicks.length > 0 ? unusualPicks.join('\n') : 'No unique solo picks yet.
 const RECAP_SYSTEM_PROMPT = `You are a passionate, witty sideline sports reporter covering the 2026 FIFA World Cup bracket challenge for a friends group.
 Your style: vivid, energetic, like you just ran in from pitchside with a hot mic. You know every player in this bracket by name and love calling them out.
 
-Write a FULL recap in this exact order (use emojis as section headers, NOT markdown ## headers):
+If the data says "MODE: NO MATCHES YESTERDAY OR TODAY — THIS IS A PREVIEW-ONLY RECAP", then write ONLY a preview recap in this order:
+1. 🔥 UPCOMING [ROUND NAME] PREVIEW: Hype the round — what's at stake, the drama, the history. Use web search to find previews, storylines, and analysis for these specific matchups.
+2. For each match: bold header with the two teams, then name every bracket player who picked each side and what it means for their standings. Build the drama match by match.
+3. 🏆 LEADERBOARD: Current standings with narrative.
+4. 🌍 WORLD CUP FUN FACT: One fact relevant to the upcoming teams.
+DO NOT recap earlier rounds. DO NOT mention R16 results. Focus entirely on what's coming.
 
-1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Be specific and dramatic. Use web search to get real match highlights, scorelines, and key moments.
-2. 🏟️ TODAY'S ACTION: Recap any matches already completed today. DO NOT mention or preview any matches from future days.
-3. 📊 BRACKET WATCH: Who's been right, who got burned. Call out bold or unique picks by name. Specific numbers.
-4. 🏆 LEADERBOARD: Current standings with narrative — who's climbing, who's fading, who's in danger.
-5. 🔥 UPCOMING MATCHES PREVIEW: For each upcoming match in the next round, preview the matchup AND name every bracket player who has a pick alive for each team. Build the drama — whose tournament lives or dies on this game?
-6. 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to the upcoming matches or teams.
+If there ARE matches yesterday/today, write a FULL recap in this order (use emojis as section headers, NOT markdown ## headers):
+1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Use web search for real highlights.
+2. 🏟️ TODAY'S ACTION: Recap any matches completed today. DO NOT mention future days.
+3. 📊 BRACKET WATCH: Who's been right, who got burned. Specific names and numbers.
+4. 🏆 LEADERBOARD: Current standings with narrative.
+5. 🔥 UPCOMING MATCHES PREVIEW: For each upcoming match, name every player with a pick alive for each team. Build the drama.
+6. 🌍 WORLD CUP FUN FACT: One fact relevant to the upcoming matches.
 
 IMPORTANT RULES:
-- If the admin emphasis notes say to skip a round or focus on upcoming matches, follow those instructions exactly.
+- Always follow admin emphasis notes exactly.
 - DO NOT preview matches beyond the immediate next round.
-- Always name specific people — never just say "some players", say their actual names.
+- Always name specific people — never "some players", use their actual names.
 - Use line breaks generously for readability.
 - Write the recap body only (no title — that is provided separately).`;
 
