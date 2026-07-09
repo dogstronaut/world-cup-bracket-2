@@ -198,19 +198,35 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
   }
 
   const upcomingRoundName = upcomingRound >= 0 ? ROUND_NAMES[upcomingRound] : 'None';
+  const previewOnly = yesterdayMatches.length === 0 && todayMatches.length === 0;
 
-  // Between-rounds day: no matches yesterday or today — pure preview mode
-  const betweenRounds = yesterdayMatches.length === 0 && todayMatches.length === 0;
+  // In preview-only mode, strip ALL past match data — only send upcoming matches + leaderboard
+  if (previewOnly) {
+    return `
+MODE: PREVIEW-ONLY — DO NOT RECAP ANY PAST MATCHES. Focus 100% on the upcoming ${upcomingRoundName}.
+TODAY'S DATE: ${targetDate}
+TOTAL BRACKETS: ${brackets.length}
+
+=== UPCOMING ${upcomingRoundName.toUpperCase()} MATCHES — WHO HAS PICKS ALIVE ===
+${upcomingMatchPreviews.length === 0 ? 'Tournament complete.' : upcomingMatchPreviews.join('\n\n')}
+
+=== CURRENT LEADERBOARD (top 10) ===
+${scored.map((s, i) => `${i + 1}. ${s.name} — ${s.score.points} pts`).join('\n')}
+
+=== CHAMPION PICK DISTRIBUTION ===
+${champSorted.map(([team, names]) => `${team} ${TEAM_FLAGS[team] || ''}: ${names.length} picks (${names.join(', ')})`).join('\n')}
+`.trim();
+  }
 
   return `
 TODAY'S DATE: ${targetDate}
 TOTAL BRACKETS: ${brackets.length}
-${betweenRounds ? '\nMODE: NO MATCHES YESTERDAY OR TODAY — THIS IS A PREVIEW-ONLY RECAP. Do not recap earlier rounds. Go straight to the upcoming match previews.\n' : ''}
-${!betweenRounds ? `=== YESTERDAY'S COMPLETED MATCHES (${yesterdayFormatted}) ===
+
+=== YESTERDAY'S COMPLETED MATCHES (${yesterdayFormatted}) ===
 ${yesterdayMatches.length === 0 ? 'None.' : yesterdayMatches.join('\n\n')}
 
 === TODAY'S COMPLETED MATCHES (${todayFormatted}) ===
-${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.join('\n\n')}` : ''}
+${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.join('\n\n')}
 
 === UPCOMING: ${upcomingRoundName.toUpperCase()} — WHO HAS PICKS ALIVE ===
 ${upcomingMatchPreviews.length === 0 ? 'Tournament complete.' : upcomingMatchPreviews.join('\n\n')}
