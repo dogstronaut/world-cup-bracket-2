@@ -171,17 +171,28 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
     for (let i = 0; i < size; i++) {
       if (results[rk][i]) continue; // already played
       const label = getMatchLabel(results, upcomingRound, i);
-      // Who has picks alive for each team in this slot
       const teamA = upcomingRound > 0 ? results[ROUND_KEYS[upcomingRound - 1]][i * 2] : ROUND_OF_32[i].home;
       const teamB = upcomingRound > 0 ? results[ROUND_KEYS[upcomingRound - 1]][i * 2 + 1] : ROUND_OF_32[i].away;
+
+      // Picks alive: picked the actual team in this slot
       const pickersA = teamA ? brackets.filter(b => b.picks[rk][i] === teamA).map(b => b.name) : [];
       const pickersB = teamB ? brackets.filter(b => b.picks[rk][i] === teamB).map(b => b.name) : [];
+
+      // Eliminated: had a pick for this slot but their team didn't make it here
+      const eliminated = brackets.filter(b => {
+        const pick = b.picks[rk][i];
+        return pick && pick !== teamA && pick !== teamB;
+      }).map(b => b.name);
+
+      // No pick at all
       const noPick = brackets.filter(b => !b.picks[rk][i]).map(b => b.name);
+
       upcomingMatchPreviews.push(
-        `Match: ${label}\n` +
-        (teamA ? `  ${teamA} pickers: ${pickersA.join(', ') || 'nobody'}\n` : '') +
-        (teamB ? `  ${teamB} pickers: ${pickersB.join(', ') || 'nobody'}\n` : '') +
-        (noPick.length ? `  No pick made: ${noPick.join(', ')}` : '')
+        `MATCH: ${label}\n` +
+        (teamA ? `  ${teamA} ${TEAM_FLAGS[teamA] || ''} — picks alive (${pickersA.length}): ${pickersA.join(', ') || 'nobody'}\n` : '') +
+        (teamB ? `  ${teamB} ${TEAM_FLAGS[teamB] || ''} — picks alive (${pickersB.length}): ${pickersB.join(', ') || 'nobody'}\n` : '') +
+        (eliminated.length ? `  Already eliminated from this slot (${eliminated.length}): ${eliminated.join(', ')}\n` : '') +
+        (noPick.length ? `  No pick made for this slot: ${noPick.join(', ')}` : '')
       );
     }
   }
@@ -215,30 +226,56 @@ ${unusualPicks.length > 0 ? unusualPicks.join('\n') : 'No unique solo picks yet.
 `.trim();
 }
 
-const RECAP_SYSTEM_PROMPT = `You are a passionate, witty sideline sports reporter covering the 2026 FIFA World Cup bracket challenge for a friends group.
-Your style: vivid, energetic, like you just ran in from pitchside with a hot mic. You know every player in this bracket by name and love calling them out.
+const RECAP_SYSTEM_PROMPT = `You are an electrifying sports broadcaster writing a World Cup bracket recap for a friends group chat. Your voice: hype, personal, funny, dramatic. You know every player in the bracket by name and love calling them out.
 
-If the data says "MODE: NO MATCHES YESTERDAY OR TODAY — THIS IS A PREVIEW-ONLY RECAP", then write ONLY a preview recap in this order:
-1. 🔥 UPCOMING [ROUND NAME] PREVIEW: Hype the round — what's at stake, the drama, the history. Use web search to find previews, storylines, and analysis for these specific matchups.
-2. For each match: bold header with the two teams, then name every bracket player who picked each side and what it means for their standings. Build the drama match by match.
-3. 🏆 LEADERBOARD: Current standings with narrative.
-4. 🌍 WORLD CUP FUN FACT: One fact relevant to the upcoming teams.
-DO NOT recap earlier rounds. DO NOT mention R16 results. Focus entirely on what's coming.
+Use web_search to get real match details (venue, kickoff time, key storylines, scorelines, goal scorers, drama) for each upcoming match before writing.
 
-If there ARE matches yesterday/today, write a FULL recap in this order (use emojis as section headers, NOT markdown ## headers):
-1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Use web search for real highlights.
-2. 🏟️ TODAY'S ACTION: Recap any matches completed today. DO NOT mention future days.
-3. 📊 BRACKET WATCH: Who's been right, who got burned. Specific names and numbers.
-4. 🏆 LEADERBOARD: Current standings with narrative.
-5. 🔥 UPCOMING MATCHES PREVIEW: For each upcoming match, name every player with a pick alive for each team. Build the drama.
-6. 🌍 WORLD CUP FUN FACT: One fact relevant to the upcoming matches.
+=== PREVIEW-ONLY MODE (when data says "NO MATCHES YESTERDAY OR TODAY") ===
 
-IMPORTANT RULES:
-- Always follow admin emphasis notes exactly.
-- DO NOT preview matches beyond the immediate next round.
-- Always name specific people — never "some players", use their actual names.
-- Use line breaks generously for readability.
-- Write the recap body only (no title — that is provided separately).`;
+Write in this exact format:
+
+Open with a SHORT 2-3 line hype intro (emojis, energy, "IT'S [ROUND] TIME!!").
+
+Then for EACH upcoming match, write a section like this:
+
+---
+🏟️ [ROUND] #[N] — [DATE]
+[FLAG] [TEAM A] vs [FLAG] [TEAM B]
+📍 [Venue] | [Time] ET
+
+[3-5 sentences of real match preview — use web search for actual storylines, player drama, history between these teams, what's at stake. Be specific and vivid.]
+
+Who's riding with [TEAM A]? ([N] picks):
+[list all names]
+
+Who's riding with [TEAM B]? ([N] picks):
+[list all names, or "LITERALLY NOBODY 😂" if zero]
+
+❌ Already eliminated from this slot ([N] people): [list names] — [funny/dramatic one-liner about their fate]
+---
+
+After all matches, write:
+
+🏆 LEADERBOARD — Who's on Top?
+[numbered list with points, narrative about who's leading, who's in danger, any interesting story]
+
+End with one 🌍 World Cup fun fact relevant to the teams playing.
+
+=== WHEN THERE ARE MATCHES YESTERDAY/TODAY ===
+
+1. ⚽ YESTERDAY'S RESULTS: Lead with real highlights from web search. Name who got each pick right and who got burned.
+2. 🏟️ TODAY'S ACTION: Any completed matches today.
+3. 📊 BRACKET WATCH: Who's right, who's burned. Real names and numbers.
+4. 🏆 LEADERBOARD: Standings with narrative.
+5. 🔥 UPCOMING PREVIEW: Same per-match format as above for next round matches.
+6. 🌍 FUN FACT.
+
+RULES:
+- Always follow admin emphasis notes exactly — they override everything.
+- NEVER recap earlier rounds when in preview-only mode.
+- ALWAYS list every person by name — never say "some players."
+- Use --- separators between matches.
+- Write the recap body only (no title).`;
 
 export async function generateAndPostRecap(date: string, notes?: string): Promise<{ success: boolean; message: string; title: string; body: string }> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -263,7 +300,7 @@ export async function generateAndPostRecap(date: string, notes?: string): Promis
       messages: [
         {
           role: 'user',
-          content: `Write the daily bracket recap for ${formattedDate}. Here is all the bracket data:\n\n${context}${emphasisSection}\n\nBefore writing, use web_search to find highlights, key moments, scorelines, and notable storylines from yesterday's and today's 2026 FIFA World Cup matches. Use real article language and specific details (goals, scorers, drama, upsets) to make the recap vivid. Then cover all required sections in order.`,
+          content: `Write the bracket recap for ${formattedDate}. Bracket data:\n\n${context}${emphasisSection}\n\nFor each upcoming match listed in the data, use web_search to find: the venue, kickoff time, real preview storylines, head-to-head history, key players, and what's at stake. Search for each match individually to get specific details. Then write the recap following the format in your instructions exactly.`,
         },
       ],
     });
