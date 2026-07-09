@@ -156,19 +156,37 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
     }
   }
 
-  // Today's remaining matches (slots with no winner yet in the active round)
-  let todayUpcoming: string[] = [];
-  if (todayRound >= 0) {
-    const rk = ROUND_KEYS[todayRound];
-    const size = ROUND_SIZES[todayRound];
+  // Build upcoming matches preview for the next unfinished round
+  // Find the first round that has any unfilled slots
+  let upcomingRound = -1;
+  for (let r = 0; r <= 4; r++) {
+    const rk = ROUND_KEYS[r];
+    if (results[rk].some(v => v === null)) { upcomingRound = r; break; }
+  }
+
+  const upcomingMatchPreviews: string[] = [];
+  if (upcomingRound >= 0) {
+    const rk = ROUND_KEYS[upcomingRound];
+    const size = ROUND_SIZES[upcomingRound];
     for (let i = 0; i < size; i++) {
-      if (!results[rk][i]) {
-        // For R32, only include if scheduled today
-        if (todayRound === 0 && ROUND_OF_32[i].date !== todayFormatted) continue;
-        todayUpcoming.push(getMatchLabel(results, todayRound, i));
-      }
+      if (results[rk][i]) continue; // already played
+      const label = getMatchLabel(results, upcomingRound, i);
+      // Who has picks alive for each team in this slot
+      const teamA = upcomingRound > 0 ? results[ROUND_KEYS[upcomingRound - 1]][i * 2] : ROUND_OF_32[i].home;
+      const teamB = upcomingRound > 0 ? results[ROUND_KEYS[upcomingRound - 1]][i * 2 + 1] : ROUND_OF_32[i].away;
+      const pickersA = teamA ? brackets.filter(b => b.picks[rk][i] === teamA).map(b => b.name) : [];
+      const pickersB = teamB ? brackets.filter(b => b.picks[rk][i] === teamB).map(b => b.name) : [];
+      const noPick = brackets.filter(b => !b.picks[rk][i]).map(b => b.name);
+      upcomingMatchPreviews.push(
+        `Match: ${label}\n` +
+        (teamA ? `  ${teamA} pickers: ${pickersA.join(', ') || 'nobody'}\n` : '') +
+        (teamB ? `  ${teamB} pickers: ${pickersB.join(', ') || 'nobody'}\n` : '') +
+        (noPick.length ? `  No pick made: ${noPick.join(', ')}` : '')
+      );
     }
   }
+
+  const upcomingRoundName = upcomingRound >= 0 ? ROUND_NAMES[upcomingRound] : 'None';
 
   return `
 TODAY'S DATE: ${targetDate}
@@ -183,8 +201,8 @@ ${todayMatches.length === 0 ? 'No matches completed today yet.' : todayMatches.j
 === EARLIER COMPLETED MATCHES ===
 ${earlierMatches.length === 0 ? 'None.' : earlierMatches.join('\n\n')}
 
-=== TODAY'S REMAINING MATCHES (still to play today) ===
-${todayUpcoming.length === 0 ? 'All of today\'s matches are done (or none scheduled today).' : todayUpcoming.join('\n')}
+=== UPCOMING: ${upcomingRoundName.toUpperCase()} — WHO HAS PICKS ALIVE ===
+${upcomingMatchPreviews.length === 0 ? 'Tournament complete.' : upcomingMatchPreviews.join('\n\n')}
 
 === CURRENT LEADERBOARD (top 10) ===
 ${scored.map((s, i) => `${i + 1}. ${s.name} — ${s.score.points} pts`).join('\n')}
@@ -202,17 +220,19 @@ Your style: vivid, energetic, like you just ran in from pitchside with a hot mic
 
 Write a FULL recap in this exact order (use emojis as section headers, NOT markdown ## headers):
 
-1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Be specific and dramatic.
-2. 🏟️ TODAY'S ACTION: Recap any matches already completed today. If matches are still to play today, hype what's at stake for bracket players — but DO NOT mention or tease matches scheduled for future days beyond today.
-3. 📊 BRACKET WATCH: Overall bracket accuracy, standout correct/wrong picks, call out bold or unique picks by name.
+1. ⚽ YESTERDAY'S RESULTS: Lead with yesterday's completed matches — name exactly who got each pick right and who got burned. Be specific and dramatic. Use web search to get real match highlights, scorelines, and key moments.
+2. 🏟️ TODAY'S ACTION: Recap any matches already completed today. DO NOT mention or preview any matches from future days.
+3. 📊 BRACKET WATCH: Who's been right, who got burned. Call out bold or unique picks by name. Specific numbers.
 4. 🏆 LEADERBOARD: Current standings with narrative — who's climbing, who's fading, who's in danger.
-5. 🔥 TRENDS: Patterns in the bracket — who's been consistently right, any picks on the bubble, champion picks still alive.
-6. 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to today's teams or matches.
+5. 🔥 UPCOMING MATCHES PREVIEW: For each upcoming match in the next round, preview the matchup AND name every bracket player who has a pick alive for each team. Build the drama — whose tournament lives or dies on this game?
+6. 🌍 WORLD CUP FUN FACT: One genuinely interesting historical or football fact relevant to the upcoming matches or teams.
 
-IMPORTANT: DO NOT tease or preview matches scheduled for future days beyond today. Only reference today's remaining matches if they exist.
-Be specific with names and numbers. Keep energy high throughout.
-Use line breaks generously for readability.
-Write the recap body only (no title — that is provided separately).`;
+IMPORTANT RULES:
+- If the admin emphasis notes say to skip a round or focus on upcoming matches, follow those instructions exactly.
+- DO NOT preview matches beyond the immediate next round.
+- Always name specific people — never just say "some players", say their actual names.
+- Use line breaks generously for readability.
+- Write the recap body only (no title — that is provided separately).`;
 
 export async function generateAndPostRecap(date: string, notes?: string): Promise<{ success: boolean; message: string; title: string; body: string }> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
