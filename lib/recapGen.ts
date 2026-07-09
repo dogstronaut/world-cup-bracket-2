@@ -198,7 +198,9 @@ function buildRecapContext(brackets: Bracket[], results: Results, targetDate: st
   }
 
   const upcomingRoundName = upcomingRound >= 0 ? ROUND_NAMES[upcomingRound] : 'None';
-  const previewOnly = yesterdayMatches.length === 0 && todayMatches.length === 0;
+  // Preview-only: the upcoming round hasn't started yet (no results in that round)
+  const previewOnly = upcomingRound >= 0 &&
+    results[ROUND_KEYS[upcomingRound]].every(v => v === null);
 
   // In preview-only mode, strip ALL past match data — only send upcoming matches + leaderboard
   if (previewOnly) {
@@ -309,7 +311,7 @@ export async function generateAndPostRecap(date: string, notes?: string): Promis
 
     const response: any = await (client.messages.create as any)({
       model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
+      max_tokens: 6000,
       system: RECAP_SYSTEM_PROMPT,
       tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [
