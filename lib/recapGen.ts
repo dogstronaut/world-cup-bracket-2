@@ -304,9 +304,9 @@ export async function generateAndPostRecap(date: string, notes?: string): Promis
       ],
     });
 
-    const body = response.content
+    const body = (response.content as { type: string; text?: string }[])
       .filter(b => b.type === 'text')
-      .map(b => (b as { type: 'text'; text: string }).text)
+      .map(b => b.text ?? '')
       .join('');
 
     if (!body.trim()) throw new Error('Claude returned empty recap');
